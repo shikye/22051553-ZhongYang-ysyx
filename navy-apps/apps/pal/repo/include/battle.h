@@ -27,7 +27,7 @@
 #include "uibattle.h"
 
 #define       BATTLE_FPS               25
-#define       BATTLE_FRAME_TIME        (100000 / BATTLE_FPS)  //原来1000   100000时npc有数字 nemu需要改回1000
+#define       BATTLE_FRAME_TIME        (1000 / BATTLE_FPS)  //原来1000   100000时npc有数字 nemu需要改回1000
 
 typedef enum tagBATTLERESULT
 {

@@ -427,12 +427,7 @@ class ysyx_22051553 extends Module{
 
     trap.io.csrtr <> csrs.io.CSRTr
 
-    trap.io.inst := Mux(Icache.io.cpu.resp.valid, 
-        Mux(fdreg.pc(2),
-            Icache.io.cpu.resp.bits.data(63,32),
-            Icache.io.cpu.resp.bits.data(31,0)
-        )
-    , NOP)
+    trap.io.inst := decode.io.inst_out
 
     trap.io.pc := fetch.io.pc.bits
 
@@ -445,6 +440,7 @@ class ysyx_22051553 extends Module{
 
     //csrs
     csrs.io.timer_int := clint.io.timer_int
+    csrs.io.clear_mip := clint.io.clear_mip
     
     //FlowControl
     val master0_resp_valid = RegInit(0.B)

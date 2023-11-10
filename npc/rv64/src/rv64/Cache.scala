@@ -103,7 +103,7 @@ class Cache extends Module{
 
     val is_idle = state === s_Idle
     val is_choose = state === s_Choose
-    val is_alloc = state === s_Refill && r_count===7.U
+    val is_alloc = state === s_Refill && r_count===7.U && io.axi.resp.valid
     val is_alloc_reg = RegNext(is_alloc, 0.B)
     val is_war = state === s_WriteAfterRefill
 
@@ -226,7 +226,8 @@ class Cache extends Module{
 
     //refill
     // val refill_buffer = Reg(Vec(dataBeats, UInt(X_LEN.W))) //vec中只能填chisel类型
-    val refill_buffer = RegInit(VecInit(0.U, 0.U, 0.U, 0.U, 0.U, 0.U, 0.U, 0.U))  //vecinit可以用字面量来初始化, 有更好的写法吗 --tabulate
+    //修改，改变位宽
+    val refill_buffer = RegInit(VecInit(0.U(X_LEN.W), 0.U(X_LEN.W), 0.U(X_LEN.W), 0.U(X_LEN.W), 0.U(X_LEN.W), 0.U(X_LEN.W), 0.U(X_LEN.W), 0.U(X_LEN.W)))  //vecinit可以用字面量来初始化, 有更好的写法吗 --tabulate
 
     //read中是一个Cacheline的数据
     val read = Mux(is_alloc_reg,   //已经全部Refill到Cacheline,且Refill_buf中是完整的数据 //读不命中
@@ -308,13 +309,13 @@ class Cache extends Module{
     wtag := Mux(is_idle, tag, tag_reg)
 
 
-    val idle_mask = ~io.cpu.req.bits.mask //---------可能有问题
+    val idle_mask = io.cpu.req.bits.mask //---------可能有问题
     val hit_mask = VecInit.tabulate(8)(  //64bit的mask,对某个block使用
         i => 
         Mux(idle_mask(i) === 0.B, "b00000000".U, "b11111111".U) 
     )
 
-    val after_alloc_mask = ~cpu_mask //---------可能有问题
+    val after_alloc_mask = cpu_mask //---------可能有问题
     val aa_mask = VecInit.tabulate(8){
         i =>
         Mux(after_alloc_mask(i) === 0.B, "b00000000".U, "b11111111".U)
@@ -327,11 +328,13 @@ class Cache extends Module{
     //     {"b0000 0000".U} 
     // )
 
+    //重要 --hit_mask的组成是 hit_mask(0), hit_mask(1), hit_mask(2), hit_mask(3), hit_mask(4), hit_mask(5), hit_mask(6), hit_mask(7), 
+
     val wmask = Mux(                        //---------可能有问题  
-        is_idle, (Cat(hit_mask) << Cat(off, 0.U(6.W))).zext, //写命中 //off是block off,用于选择某个word
+        is_idle, ~((Cat(hit_mask.reverse) << Cat(off, 0.U(6.W))).zext), //写命中 //off是block off,用于选择某个word
         Mux(
             is_alloc, (0).S,   //从AXI读取完所有数据
-            (Cat(aa_mask) << Cat(off_reg, 0.U(6.W))).zext //写不命中，写入cache //off_reg用于选择某个word
+            ~((Cat(aa_mask.reverse) << Cat(off_reg, 0.U(6.W))).zext) //写不命中，写入cache //off_reg用于选择某个word
         )
     )
     dontTouch(wmask)
@@ -455,10 +458,10 @@ class Cache extends Module{
                     Tag_idxreg := Cat(Tag_idxreg(4*tlen -1 , 2*tlen), tag_reg, Tag_idxreg(tlen - 1, 0))
                 }
                 is(2.U){
-                    Tag_idxreg := Cat(Tag_idxreg(4*tlen -1 , 2*tlen), tag_reg, Tag_idxreg(2*tlen - 1, tlen))
+                    Tag_idxreg := Cat(Tag_idxreg(4*tlen -1 , 3*tlen), tag_reg, Tag_idxreg(2*tlen - 1, 0))
                 }
                 is(3.U){
-                    Tag_idxreg := Cat(tag_reg, Tag_idxreg(3*tlen - 1, 2*tlen))
+                    Tag_idxreg := Cat(tag_reg, Tag_idxreg(3*tlen - 1, 0))
                 }
             }
         }
@@ -548,7 +551,9 @@ class Cache extends Module{
                     when(w_count === 15.U){
                         w_count := w_count
                     }.otherwise{
-                        w_count := w_count + 1.U
+                        when(io.axi.resp.bits.valid){
+                            w_count := w_count + 1.U
+                        }
                     }
                 }
             }.otherwise{ //可能没选上
@@ -574,8 +579,11 @@ class Cache extends Module{
                     refill_buffer(7) := io.axi.resp.bits.data
                     state := Mux(cpu_mask.orR, s_WriteAfterRefill, s_Idle)
                 }.otherwise{
-                    r_count := r_count + 1.U
-                    refill_buffer(r_count) := io.axi.resp.bits.data
+                    when(io.axi.resp.bits.valid){
+                        r_count := r_count + 1.U
+                        refill_buffer(r_count) := io.axi.resp.bits.data
+                    }
+                    
                 }
             }.otherwise{
                 state := state

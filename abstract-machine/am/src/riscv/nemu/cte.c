@@ -9,8 +9,8 @@ Context* __am_irq_handle(Context *c) {  //根据系统调用号，得到事件�
 
   if (user_handler) {
     Event ev = {0};
-    switch (c->mcause) {
-      case 11 : ev.event = EVENT_SYSCALL; 
+    switch (c->mcause) { //例如中断，不需要+4
+      case 11 : ev.event = EVENT_SYSCALL ; c->mepc += 4;   //对于ecall触发的异常，由软件实现mepc+4  syscall需要+4
                 break;
       default: ev.event = EVENT_ERROR; break;
     }
@@ -19,11 +19,9 @@ Context* __am_irq_handle(Context *c) {  //根据系统调用号，得到事件�
       printf("irq happen, event is %d\n", ev.event);
     #endif
     
-
     c = user_handler(ev, c);
     assert(c != NULL);
   }
-
   return c;
 }
 
@@ -46,7 +44,13 @@ bool cte_init(Context*(*handler)(Event, Context*)) {
 }
 
 Context *kcontext(Area kstack, void (*entry)(void *), void *arg) {
-  return NULL;
+  Context *context_k = (Context *)((uint64_t)kstack.end - sizeof(Context));
+
+  memset(context_k, 0, sizeof(Context));
+
+  context_k->mstatus = (uintptr_t)0xa00001800;  //配合difftest spike
+  context_k->mepc = (uintptr_t)entry;
+  return context_k;
 }
 
 void yield() {

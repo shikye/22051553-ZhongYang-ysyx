@@ -27,7 +27,10 @@ class CLINT extends Module{
 
         //to CSRs
         val timer_int = Output(Bool())
+        val clear_mip = Output(Bool())
     })
+
+    io.clear_mip := 0.B
 
     //内部逻辑
     val MSIP = RegInit(0.U(32.W))
@@ -93,7 +96,7 @@ class CLINT extends Module{
                     }
                 }
                 is(MTIMECMP_ADDR.U){
-
+                    io.clear_mip := 1.B
                     MTIMECMP := MTIMECMP
                     switch(io.clex.wmask){
                         is(0xff.U){

@@ -39,7 +39,9 @@ class IOmem extends Bundle{
 }
 
 class IOfc extends Bundle{
-    val stall = Input(Bool())
+    val fetch_stall = Input(Bool())
+    val excute_stall = Input(Bool())
+
 
     val req = Output(Bool())
     val state = Output(UInt(2.W))
@@ -70,6 +72,8 @@ class IoforMem extends Module{
 
     val state = RegInit(s_Idle)
 
+    val fetch_buffer = RegInit(0.B)  //不能连续fetch
+
 
     val excute_req = io.ex_req
     val excute_rw = !io.excute.mask.orR
@@ -85,7 +89,7 @@ class IoforMem extends Module{
     val choose_buffer = RegInit(0.U(2.W))
 
     val load_use_local = RegInit(0.B)
-    when(io.fc.stall){
+    when(io.fc.excute_stall){  //load_use涉及的stall.excute会stall
         load_use_local := load_use_local
     }.otherwise{
         load_use_local := io.decode.load_use
@@ -202,11 +206,14 @@ class IoforMem extends Module{
     switch(state){
         is(s_Idle){
 
-                mem_data_valid := 0.B
-                decode_inst_valid := 0.B
+                when(!io.fc.excute_stall){   //防止flash中的指令被忽略  --excute涉及的stall,能覆盖此情况
+                    mem_data_valid := 0.B
+                    decode_inst_valid := 0.B
+                }
+                
 
                 
-                when(excute_req){ 
+                when(excute_req && !io.fc.excute_stall){ 
                     choose_buffer := master_choose
 
                     addr_buf := io.axi.req.bits.addr
@@ -217,7 +224,7 @@ class IoforMem extends Module{
                     }
 
                     when(begin_flag && wait_cycle === 15.U){
-                        when(io.fc.stall === 1.B){
+                        when(io.fc.excute_stall === 1.B){
                             wait_cycle := 15.U
                         }.otherwise{
                             state := s_multireq
@@ -303,7 +310,7 @@ class IoforMem extends Module{
                         mask_buf := excute_mask
                     }
 
-                }.elsewhen(fetch_req){ //取指令，是对齐的
+                }.elsewhen(fetch_req  && !io.fc.fetch_stall && !io.fc.excute_stall){ //取指令，是对齐的  //fetch_stall很重要,trap时会有fetchstall,此时,io不能取指令
                     choose_buffer := master_choose
 
                     state := s_singlereq
@@ -315,6 +322,8 @@ class IoforMem extends Module{
 
                     addr_buf := io.axi.req.bits.addr
                     rw_buf := 1.B
+
+                    fetch_buffer := 1.B
                 }
 
 
@@ -325,12 +334,14 @@ class IoforMem extends Module{
                     decode_inst_valid := 1.B
                     decode_inst := io.axi.resp.bits.data
 
-                    state := s_Idle  //excute_req结束后
-                }.otherwise{
+                    state := s_Idle  
+
+                    fetch_buffer := 0.B
+                }.otherwise{ //excute_req结束后
                     mem_data_valid := 1.B
                     mem_data_bits := io.axi.resp.bits.data
 
-                    when(fetch_req){    //增加特殊情况  --优先级兑换
+                    when(fetch_req && !fetch_buffer){    //增加特殊情况  --优先级兑换
                         state := s_singlereq
                         
                         choose_buffer := "b11".U
@@ -345,6 +356,7 @@ class IoforMem extends Module{
 
                     }
                     .elsewhen(excute_req){
+                        fetch_buffer := 0.B
                         state := s_Idle
                     }
                     

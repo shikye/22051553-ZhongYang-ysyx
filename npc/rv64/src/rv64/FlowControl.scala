@@ -192,16 +192,16 @@ class FlowControl extends Module{
 
     val SFBundle = MuxCase(FlowControl.default,
         Seq(
-            
+            (io.fctr.trap_state === s_MSTATUS || io.fctr.trap_state  === s_MRET) -> FlowControl.TrapJump_SFBundle,
+            (io.fctr.pop_NOP === 1.B || io.fctr.trap_state === s_WAIT || io.fctr.trap_state === s_MEPC
+             || io.fctr.trap_state === s_MCAUSE || io.fctr.trap_state === s_MRET_WAIT || io.fctr.trap_state === s_CLRMIP)
+                -> FlowControl.TrapWait_SFBundle,
             IO_stall -> FlowControl.IOAXI_SFBundle,
             MULDIV_stall -> FlowControl.MULDIV_SFBundle,
             (io.fcIcache.state =/= 0.U) -> FlowControl.Icache_SFBundle,
             (io.fcDcache.state =/= 0.U) -> FlowControl.Dcache_SFBundle, //优先级高于load_use
             (io.fcde.load_use === 1.B) -> FlowControl.LoadUse_SFBundle,
-            (io.fctr.trap_state === s_MSTATUS || io.fctr.trap_state  === s_MRET) -> FlowControl.TrapJump_SFBundle,
-            (io.fctr.pop_NOP === 1.B || io.fctr.trap_state === s_WAIT || io.fctr.trap_state === s_MEPC
-             || io.fctr.trap_state === s_MCAUSE || io.fctr.trap_state === s_MRET_WAIT || io.fctr.trap_state === s_CLRMIP)
-                -> FlowControl.TrapWait_SFBundle,
+            
             (io.fctr.jump_flag === 1.B) -> FlowControl.JUMP_SFBundle,
             (io.fcex.jump_flag === 1.B) -> FlowControl.BRANCH_SFBundle,
             
@@ -237,7 +237,8 @@ class FlowControl extends Module{
 
     io.sdb_stall := io.fcfe.stall & io.fcde.stall & io.fcex.stall & io.fcwb.stall
 
-    io.fcio.stall := io.fcex.stall
+    io.fcio.excute_stall := io.fcex.stall
+    io.fcio.fetch_stall := io.fcfe.stall
 
 
 

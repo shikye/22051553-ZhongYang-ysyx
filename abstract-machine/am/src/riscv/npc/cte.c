@@ -8,7 +8,7 @@ Context* __am_irq_handle(Context *c) {
   if (user_handler) {
     Event ev = {0};
     switch (c->mcause) {
-      case 11: ev.event = EVENT_SYSCALL; break;
+      case 11: ev.event = EVENT_SYSCALL;c->mepc += 4; break; //对于ecall触发的异常，由软件实现mepc+4
       case 0x8000000000000007: ev.event = EVENT_IRQ_TIMER; break;
       default: ev.event = EVENT_ERROR; break;
     }
@@ -28,7 +28,7 @@ bool cte_init(Context*(*handler)(Event, Context*)) {
 
 
   //没有写mstatus ************************************************重要
-  unsigned long int temp = 0xa00001808;
+  unsigned long int temp = 0xa00001800;  //1808中后一个8导致打开全局中断
   asm volatile("csrw mstatus, %0" : : "r"(temp));  //打开全局中断
 
   // register event handler
@@ -52,37 +52,37 @@ bool ienabled() {
 
 void iset(bool enable) {//打开全局中断、打开定时器中断、设置mtime和mtimecmp
     
-    unsigned long mtime, mtimecmp;
-    asm volatile (
-        // 读取mtime寄存器
-        "li a0, 0x200bff8\n"
-        "ld %[mtime], 0(a0)\n"
+    // unsigned long mtime, mtimecmp;
+    // asm volatile (
+    //     // 读取mtime寄存器
+    //     "li a0, 0x200bff8\n"
+    //     "ld %[mtime], 0(a0)\n"
         
-        // 设置mtimecmp寄存器
-        "addi %[mtimecmp], %[mtime], 1000\n"
-        "li a0, 0x2004000\n"
-        "sd %[mtimecmp], 0(a0)\n"
+    //     // 设置mtimecmp寄存器
+    //     "addi %[mtimecmp], %[mtime], 1000\n"
+    //     "li a0, 0x2004000\n"
+    //     "sd %[mtimecmp], 0(a0)\n"
 
-        "csrw mip, 0\n"
-        : [mtime] "=r" (mtime), [mtimecmp] "=r" (mtimecmp)
-        :
-        : "a0", "a1" // clobber list
-    );
+    //     "csrw mip, 0\n"
+    //     : [mtime] "=r" (mtime), [mtimecmp] "=r" (mtimecmp)
+    //     :
+    //     : "a0", "a1" // clobber list
+    // );
     
-    asm volatile (
-        // 确保 a0 是 0
-        "li a0, 0\n"
+    // asm volatile (
+    //     // 确保 a0 是 0
+    //     "li a0, 0\n"
         
-        // 使能mie的MTIE位
-        "li a1, 0x80\n" // MTIE在第七位
-        "csrrw a0, mie, a1\n"
+    //     // 使能mie的MTIE位
+    //     "li a1, 0x80\n" // MTIE在第七位
+    //     "csrrw a0, mie, a1\n"
         
-        // 使能mstatus的MIE位
-        "li a1, 0x8\n" // MIE在第三位
-        "csrrw a0, mstatus, a1\n"
-        : 
-        :
-        : "a0", "a1" // clobber list
-    );
+    //     // 使能mstatus的MIE位
+    //     "li a1, 0x8\n" // MIE在第三位
+    //     "csrrw a0, mstatus, a1\n"
+    //     : 
+    //     :
+    //     : "a0", "a1" // clobber list
+    // );
 
 }

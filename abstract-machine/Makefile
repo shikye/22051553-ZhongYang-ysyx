@@ -149,6 +149,7 @@ $(ARCHIVE): $(OBJS)
 image: image-dep
 archive: $(ARCHIVE)
 image-dep: $(OBJS) am $(LIBS)
+	$(info $(LDFLAGS))
 	@echo \# Creating image [$(ARCH)]
 .PHONY: image image-dep archive run $(LIBS)
 

@@ -38,6 +38,9 @@ class DecodeIO extends Bundle{
     //CSRs
     val csrs    = Flipped(new CSRDeIO)
 
+    //trap
+    val inst_out = Output(UInt(INST_LEN.W))
+
 }
 
 class Decode extends Module {
@@ -59,7 +62,7 @@ class Decode extends Module {
 
 
     //内部逻辑
-    // val inst_buffer = RegInit(0.U(INST_LEN.W))
+    // val inst_buffer = RegInit(0.U(INST_LEN.W))  //--会产生combination
     // inst_buffer := Mux(io.inst.valid, io.inst.bits.data, NOP)
 
 
@@ -74,6 +77,8 @@ class Decode extends Module {
         )
     )
 
+    io.inst_out := inst
+    dontTouch(io.inst_out)
     
 
 

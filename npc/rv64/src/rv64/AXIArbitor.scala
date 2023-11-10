@@ -18,6 +18,7 @@ class AXIMasterReq extends Bundle{
 
 class AXIMasterResp extends Bundle{
     val data = UInt((X_LEN).W)
+    val valid = Bool()
     val choose = Bool()
 }
 
@@ -168,12 +169,15 @@ class AXIArbitor extends Module{
 
     io.master0.resp.valid := 0.B
     io.master0.resp.bits.data := 0.U
+    io.master0.resp.bits.valid := 0.U
     io.master0.resp.bits.choose := choose_buffer(0)
     io.master1.resp.valid := 0.B
     io.master1.resp.bits.data := 0.U
+    io.master1.resp.bits.valid := 0.U
     io.master1.resp.bits.choose := choose_buffer(1)
     io.master2.resp.valid := 0.B
     io.master2.resp.bits.data := 0.U
+    io.master2.resp.bits.valid := 0.U
     io.master2.resp.bits.choose := choose_buffer(2)
 
     //--------aw
@@ -241,6 +245,16 @@ class AXIArbitor extends Module{
 
             w_count := Mux(io.AXI_O.wvalid && io.AXI_O.wready, w_count + 1.U, w_count)
 
+            when(io.AXI_O.wvalid && io.AXI_O.wready){
+                when(choose_buffer(0)){ //选择的master0
+                    io.master0.resp.bits.valid := 1.B
+                }.elsewhen(choose_buffer(1)){
+                    io.master1.resp.bits.valid := 1.B
+                }.otherwise{
+                    io.master2.resp.bits.valid := 1.B
+                }
+            }
+
             //b_channel
             b_comp := Mux(io.AXI_O.bvalid && io.AXI_O.bready, 1.B, 0.B)
 
@@ -288,10 +302,13 @@ class AXIArbitor extends Module{
             io.AXI_O.rready := 1.B
             when(io.AXI_O.rvalid && io.AXI_O.rready){ //先读的是低位数据
                 when(choose_buffer(0)){ //选择的master0
+                    io.master0.resp.bits.valid := 1.B
                     io.master0.resp.bits.data := io.AXI_O.rdata
                 }.elsewhen(choose_buffer(1)){
+                    io.master1.resp.bits.valid := 1.B
                     io.master1.resp.bits.data := io.AXI_O.rdata
                 }.otherwise{
+                    io.master2.resp.bits.valid := 1.B
                     io.master2.resp.bits.data := io.AXI_O.rdata
                 }
                 r_count := r_count + 1.U
@@ -312,7 +329,7 @@ class AXIArbitor extends Module{
                 r_count := 0.U
 
                 when(choose_buffer(0)){ //选择的master0
-                    io.master0.resp.valid := 1.B
+                    io.master0.resp.valid := 1.B  //代表完成了所有传输
                     io.master0.resp.bits.data := io.AXI_O.rdata
                 }.elsewhen(choose_buffer(1)){
                     io.master1.resp.valid := 1.B

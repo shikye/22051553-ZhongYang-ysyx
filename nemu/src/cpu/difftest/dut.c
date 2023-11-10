@@ -95,6 +95,22 @@ static void checkregs(CPU_state *ref, vaddr_t pc) {
   if (!isa_difftest_checkregs(ref, pc)) {
     nemu_state.state = NEMU_ABORT;
     nemu_state.halt_pc = pc;
+    //显示ref信息
+    printf("--------------------ref----------------------\n");
+    printf("pc\t\t0x%-16lx\t\t%-20ld\n", ref->pc, ref->pc);
+  
+    char *regs[] = {
+  "$0", "ra", "sp", "gp", "tp", "t0", "t1", "t2",
+  "s0", "s1", "a0", "a1", "a2", "a3", "a4", "a5",
+  "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7",
+  "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6"
+};
+
+    for(int i = 0; i < 31; i ++){
+        printf("%s\t\t0x%-16lx\t\t%-20ld\n", regs[i], ref->gpr[i], ref->gpr[i]);
+    }
+
+    printf("--------------------nemu----------------------\n");
     isa_reg_display();
   }
 }

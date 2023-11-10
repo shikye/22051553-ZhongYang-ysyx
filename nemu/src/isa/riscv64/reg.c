@@ -37,11 +37,29 @@ word_t isa_reg_str2val(const char *s, bool *success) {
 
   *success = true;
 
+    //增加csr
+    if(strcmp(s+1, "mtvec") == 0)
+        return cpu.csr[0];
+    if(strcmp(s+1, "mcause") == 0)
+        return cpu.csr[1];
+    if(strcmp(s+1, "mepc") == 0)
+        return cpu.csr[2];
+    if(strcmp(s+1, "mie") == 0)
+        return cpu.csr[3];
+    if(strcmp(s+1, "mip") == 0)
+        return cpu.csr[4];
+    if(strcmp(s+1, "mstatus") == 0)
+        return cpu.csr[5];
+    if(strcmp(s+1, "mscratch") == 0)
+        return cpu.csr[6];
+
+
   if(strcmp(s, "$0") == 0)
     return cpu.gpr[0];
 
   if(strcmp(s+1, "pc") == 0)
     return cpu.pc;
+
 
   for(int i = 1; i < 32; i++){
     if(strcmp(s+1, regs[i]) == 0)

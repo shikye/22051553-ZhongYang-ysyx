@@ -33,6 +33,7 @@ class CSRIO extends Bundle{
     val CSRTr = new CSRTrapIO
 
     val timer_int = Input(Bool())
+    val clear_mip = Input(Bool())
 }
 
 class CSRs extends Module{
@@ -48,45 +49,47 @@ class CSRs extends Module{
     val MSTATUS = RegInit(0.U(X_LEN.W))
     val MSCRATCH = RegInit(0.U(X_LEN.W))
 
-
-    when(io.timer_int){   //定时器中断等待处理
+    when(io.clear_mip){ //写mtimecmp后,需要清除
+        MIP := Cat(MIP(63,8), 0.U, MIP(6,0))
+    }
+    .elsewhen(io.timer_int){   //定时器中断等待处理
         MIP := Cat(MIP(63,8), 1.U, MIP(6,0))
     }
 
     switch(io.CSRWb.rd | io.CSRTr.rd){
-        is(MTVEC_ADDR.U){
+        is(MTVEC_ADDR.U){  
             MTVEC := Mux(io.CSRWb.csr_wen, io.CSRWb.csr_wdata, 
-                Mux(io.CSRTr.csr_wen, io.CSRTr.csr_wdata, 0.U)
+                Mux(io.CSRTr.csr_wen, io.CSRTr.csr_wdata, MTVEC)  //修改末项,不应该为0
                 )
         }
         is(MCAUSE_ADDR.U){
             MCAUSE := Mux(io.CSRWb.csr_wen, io.CSRWb.csr_wdata, 
-                Mux(io.CSRTr.csr_wen, io.CSRTr.csr_wdata, 0.U)
+                Mux(io.CSRTr.csr_wen, io.CSRTr.csr_wdata, MCAUSE)
                 )
         }
         is(MEPC_ADDR.U){
             MEPC := Mux(io.CSRWb.csr_wen, io.CSRWb.csr_wdata, 
-                Mux(io.CSRTr.csr_wen, io.CSRTr.csr_wdata, 0.U)
+                Mux(io.CSRTr.csr_wen, io.CSRTr.csr_wdata, MEPC)
                 )
         }
         is(MIE_ADDR.U){
             MIE := Mux(io.CSRWb.csr_wen, io.CSRWb.csr_wdata, 
-                Mux(io.CSRTr.csr_wen, io.CSRTr.csr_wdata, 0.U)
+                Mux(io.CSRTr.csr_wen, io.CSRTr.csr_wdata, MIE)
                 )
         }
         is(MIP_ADDR.U){
             MIP := Mux(io.CSRWb.csr_wen, io.CSRWb.csr_wdata, 
-                Mux(io.CSRTr.csr_wen, io.CSRTr.csr_wdata, 0.U)
+                Mux(io.CSRTr.csr_wen, io.CSRTr.csr_wdata, MIP)
                 )
         }
         is(MSTATUS_ADDR.U){
             MSTATUS := Mux(io.CSRWb.csr_wen, io.CSRWb.csr_wdata, 
-                Mux(io.CSRTr.csr_wen, io.CSRTr.csr_wdata, 0.U)
+                Mux(io.CSRTr.csr_wen, io.CSRTr.csr_wdata, MSTATUS)
                 )
         }
         is(MSCRATCH_ADDR.U){
             MSCRATCH := Mux(io.CSRWb.csr_wen, io.CSRWb.csr_wdata, 
-                Mux(io.CSRTr.csr_wen, io.CSRTr.csr_wdata, 0.U)
+                Mux(io.CSRTr.csr_wen, io.CSRTr.csr_wdata, MSCRATCH)
                 )
         }
     }
@@ -101,7 +104,7 @@ class CSRs extends Module{
             MCAUSE_ADDR.U -> MCAUSE,
             MEPC_ADDR.U -> MEPC,
             MIE_ADDR.U -> MIE,
-            MIP_ADDR.U -> MIE,
+            MIP_ADDR.U -> MIP,
             MSTATUS_ADDR.U -> MSTATUS,
             MSCRATCH_ADDR.U -> MSCRATCH
         )
