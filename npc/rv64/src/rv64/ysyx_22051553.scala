@@ -433,6 +433,8 @@ class ysyx_22051553 extends Module{
 
     trap.io.fctr <> fc.io.fctr
 
+    trap.io.fcex_jump_flag := excute.io.fcex.jump_flag
+    trap.io.fcex_jump_pc := excute.io.fcex.jump_pc
     
     //CLINT
     clint.io.clex <> excute.io.clex
@@ -449,11 +451,16 @@ class ysyx_22051553 extends Module{
     fc.io.fcde.jump_flag := decode.io.jump_flag
     fc.io.fcde.jump_pc := decode.io.jump_pc
     fc.io.fcde.load_use := decode.io.load_use
+    fc.io.fcde.fencei := decode.io.fencei
+    decode.io.tirfi_flag := fc.io.fcde.tirfi_flag
 
     fc.io.fcex <> excute.io.fcex
 
     fc.io.fcio.req := arbitor.io.master0.req.valid
     fc.io.fcio.valid := arbitor.io.master0.resp.valid | master0_resp_valid
+
+    
+    fc.io.fencei_resp := Dcache.io.cpu.fc_fencei_resp
     
 
 
@@ -472,6 +479,7 @@ class ysyx_22051553 extends Module{
     Icache.io.cpu.req.bits.addr := fetch.io.pc.bits(31,0)
     Icache.io.cpu.req.bits.data := DontCare
     Icache.io.cpu.req.bits.mask := DontCare
+    Icache.io.cpu.fc_fencei_req := 0.B
 
     Icache.io.cpu.resp <> decode.io.inst
 
@@ -486,6 +494,7 @@ class ysyx_22051553 extends Module{
     Dcache.io.cpu.req.bits.addr := excute_addr
     Dcache.io.cpu.req.bits.data := excute.io.wdata
     Dcache.io.cpu.req.bits.mask := excute.io.wmask
+    Dcache.io.cpu.fc_fencei_req := fc.io.fencei_req && !fc.io.fcex.jump_flag  //如果是在branch的后一条,不能req
 
     Dcache.io.cpu.resp <> mem.io.rdata
 

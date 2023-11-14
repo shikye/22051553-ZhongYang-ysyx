@@ -13,7 +13,7 @@ import Define._
 import firrtl.bitWidth
 
 object CacheState { //有的会产生没必要的延迟周期，但是状态机更清晰
-    val s_Idle :: s_Choose  :: s_WriteBack :: s_RefillReady :: s_Refill :: s_WriteAfterRefill :: Nil = Enum(6)
+    val s_Idle :: s_Choose  :: s_WriteBack :: s_RefillReady :: s_Refill :: s_WriteAfterRefill :: s_fencei :: s_fencei_writeback :: Nil = Enum(8)
 //                                               等待AR的周期
 }
 
@@ -59,6 +59,10 @@ class CacheIO extends Bundle{  //cpu<>cache
     val sram1 = new SramIO
     val sram2 = new SramIO
     val sram3 = new SramIO
+
+
+    val fc_fencei_req = Input(Bool())
+    val fc_fencei_resp = Output(Bool())
 }
 
 class CacheModuleIO extends Bundle{
@@ -106,6 +110,14 @@ class Cache extends Module{
     val is_alloc = state === s_Refill && r_count===7.U && io.axi.resp.valid
     val is_alloc_reg = RegNext(is_alloc, 0.B)
     val is_war = state === s_WriteAfterRefill
+
+    val is_fencei = state === s_fencei
+
+    //fence
+    val fence_idx = RegInit(0.U(slen.W))
+    val fence_count = RegInit(0.U(2.W))
+
+    dontTouch(io.cpu.fc_fencei_resp)
 
 
     //缓存地址
@@ -156,10 +168,11 @@ class Cache extends Module{
     // 1.写命中
     // 2.从AXI读出，一定需要写
     // 3.Refill结束后，写入数据
-    val ren = !wen && ( (is_idle && hit && !w_req) || (is_choose) )
+    val ren = !wen && ( (is_idle && hit && !w_req) || (is_choose) || (is_fencei))
     // 1.保证单端口
     // 2.读命中
     // 3.写回判断
+    // 4.fencei写回判断
     val ren_reg = RegNext(ren, 0.B)
     
 
@@ -177,6 +190,9 @@ class Cache extends Module{
     dontTouch(tag_reg)
     dontTouch(idx_reg)
     dontTouch(off_reg)
+
+
+
 
     val Tag_idx = TagArray(idx)
     val Tag_idxreg = TagArray(idx_reg)
@@ -207,7 +223,7 @@ class Cache extends Module{
                 ),
                 idx
             ),
-            Cat(victim, idx)
+            Mux(is_fencei, Cat(fence_count, fence_idx), Cat(victim, idx_reg))  //1.fence, 2.is_choose
         )
             
         io.cpu.sram0.addr := addr_temp
@@ -234,7 +250,7 @@ class Cache extends Module{
         refill_buffer.asUInt,
         Mux(hit_reg,   
             rdata, //读命中
-            Mux(ren_reg, //写回数据
+            Mux(ren_reg, //写回数据或fencei获取的数据
                 rdata,
                 rdata_buf
             )
@@ -375,7 +391,7 @@ class Cache extends Module{
                 ),
                 idx
             ),
-            Cat(victim,idx)
+            Cat(victim,idx_reg)  //注意将idx改成了idx_reg
         )
 
         io.cpu.sram0.addr := addr_temp
@@ -489,11 +505,32 @@ class Cache extends Module{
     io.fccache.axi_valid := is_alloc_reg
 
     
+    io.cpu.fc_fencei_resp := 0.B
+    
+    val fencev_idxreg = valid(fence_idx)
+    val fenced_idxreg = dirty(fence_idx)
+
+    val fence_tag = TagArray(fence_idx)
+    val fence_tag0 = fence_tag(tlen - 1, 0)
+    val fence_tag1 = fence_tag(2*tlen - 1, tlen)
+    val fence_tag2 = fence_tag(3*tlen - 1, 2*tlen)
+    val fence_tag3 = fence_tag(4*tlen - 1, 3*tlen)
+
+    
+    val fence_d0 = fencev_idxreg(0) && fenced_idxreg(0)
+    val fence_d1 = fencev_idxreg(1) && fenced_idxreg(1)
+    val fence_d2 = fencev_idxreg(2) && fenced_idxreg(2)
+    val fence_d3 = fencev_idxreg(3) && fenced_idxreg(3)
 
 
     switch(state){
         is(s_Idle){  //判断读写是否hit
-            when(io.cpu.req.valid){
+            when(io.cpu.fc_fencei_req){
+                state := s_fencei
+                fence_idx := 0.U
+                fence_count := 0.U
+            }
+            .elsewhen(io.cpu.req.valid){
                 when(hit){
                     state := s_Idle
                 }.otherwise{
@@ -548,7 +585,7 @@ class Cache extends Module{
                     addr_buf := io.axi.req.bits.addr
                     rw_buf := io.axi.req.bits.rw
                 }.otherwise{
-                    when(w_count === 15.U){
+                    when(w_count === 7.U){
                         w_count := w_count
                     }.otherwise{
                         when(io.axi.resp.bits.valid){
@@ -593,6 +630,88 @@ class Cache extends Module{
         is(s_WriteAfterRefill){
             state := s_Idle
         }
+        is(s_fencei){
+            io.axi.req.valid := MuxLookup(fence_count, 0.B,
+                Seq(
+                    0.U -> Mux(fence_d0, 1.B, 0.B),
+                    1.U -> Mux(fence_d1, 1.B, 0.B),
+                    2.U -> Mux(fence_d2, 1.B, 0.B),
+                    3.U -> Mux(fence_d3, 1.B, 0.B)
+                )
+            )
+
+            io.axi.req.bits.rw := 0.B
+
+            io.axi.req.bits.addr := MuxLookup(fence_count, 0.U,
+                Seq(
+                    0.U -> (Cat(fence_tag0, fence_idx) << blen.U),
+                    1.U -> (Cat(fence_tag1, fence_idx) << blen.U),
+                    2.U -> (Cat(fence_tag2, fence_idx) << blen.U),
+                    3.U -> (Cat(fence_tag3, fence_idx) << blen.U),
+                )
+            )
+
+
+            when(io.axi.req.valid === 0.B){
+                when(fence_count === 3.U && fence_idx === (nSets-1).U){
+                    state := s_Idle
+                    io.cpu.fc_fencei_resp := 1.B
+                }
+                .elsewhen(fence_count === 3.U){
+                    fence_count := 0.U
+                    fence_idx := fence_idx + 1.U
+                }
+                .otherwise{
+                    fence_count := fence_count + 1.U
+                }
+            }.otherwise{
+                addr_buf := io.axi.req.bits.addr
+                rw_buf := io.axi.req.bits.rw
+
+                state := s_fencei_writeback
+            }
+        }
+        is(s_fencei_writeback){
+            io.axi.req.valid := 1.B
+
+            when(io.axi.resp.bits.choose){
+                when(io.axi.resp.valid){
+                    io.axi.req.valid := 0.B
+                    w_count := 0.U
+
+                    when(fence_count === 3.U && fence_idx === (nSets-1).U){
+                        state := s_Idle
+                        io.cpu.fc_fencei_resp := 1.B
+                    }.otherwise{
+                        state := s_fencei
+
+                        when(fence_count === 3.U){
+                            fence_count := 0.U
+                            fence_idx := fence_idx + 1.U
+                        }
+                        .otherwise{
+                            fence_count := fence_count + 1.U
+                        }
+                    }                    
+                }.otherwise{
+                    when(w_count === 7.U){
+                        w_count := w_count
+                    }.otherwise{
+                        when(io.axi.resp.bits.valid){
+                            w_count := w_count + 1.U
+                        }
+                    }
+                }
+            }.otherwise{
+                io.axi.req.bits.addr := addr_buf
+                io.axi.req.bits.rw := rw_buf
+            }
+
+
+
+
+        }
+
 
     }
 }

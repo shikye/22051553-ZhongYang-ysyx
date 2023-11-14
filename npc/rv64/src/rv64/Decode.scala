@@ -26,11 +26,14 @@ class DecodeIO extends Bundle{
     val jump_flag = Output(Bool())
     val jump_pc = Output(UInt(PC_LEN.W))
     val load_use = Output(Bool())
+    val fencei = Output(Bool())
 
     //from fc 
     val branch = Input(Bool())    //load_use需要。如果branch后接着load指令，随后跳转到use指令，不能作为load_use
     val stall = Input(Bool())
     val flush = Input(Bool())
+
+    val tirfi_flag = Input(Bool())
 
     //Forward
     val fwde    = Flipped(new FwDeIO)
@@ -59,6 +62,13 @@ class Decode extends Module {
 
     val cu = Module(new ControlUnit)
     val eximm = Module(new Eximm)
+    //for fence.i
+    io.fencei := 0.B
+    when(inst === BitPat.bitPatToUInt(FENCEI)){
+        io.fencei := 1.B
+    }
+
+
 
 
     //内部逻辑
@@ -66,7 +76,8 @@ class Decode extends Module {
     // inst_buffer := Mux(io.inst.valid, io.inst.bits.data, NOP)
 
 
-    inst := Mux(io.inst.valid, 
+    inst := Mux(io.tirfi_flag, NOP, 
+    Mux(io.inst.valid, 
         Mux(io.fdio.pc(2),
             io.inst.bits.data(63,32),
             io.inst.bits.data(31,0)
@@ -75,6 +86,7 @@ class Decode extends Module {
             io.inst_io.inst.bits(31,0),
             NOP
         )
+    )
     )
 
     io.inst_out := inst

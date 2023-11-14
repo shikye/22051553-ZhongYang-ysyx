@@ -55,6 +55,14 @@ object FlowControl{
     val MULDIV_SFBundle = 
         VecInit(StallY, StallY, StallY, StallY, StallY,     
             FlushN, FlushN, FlushN, FlushN, FlushN) 
+    
+    val FENCEI_SFBundle = 
+        VecInit(StallY, StallY, StallY, StallY, StallY,     
+            FlushN, FlushN, FlushN, FlushN, FlushN) 
+    
+    val TIRFI_SFBundle = 
+        VecInit(StallY, StallY, StallY, StallY, StallY,     
+            FlushN, FlushN, FlushN, FlushN, FlushN) 
 }
 
 class FcFeIO extends Bundle{
@@ -69,6 +77,9 @@ class FcDeIO extends Bundle{
     val jump_flag = Input(Bool())            //from De
     val jump_pc   = Input(UInt(PC_LEN.W))
     val load_use  = Input(Bool())
+    val fencei    = Input(Bool())
+
+    val tirfi_flag = Output(Bool())
 
     val flush     = Output(Bool())       //通往流水线寄存器 fede
     val stall     = Output(Bool())
@@ -118,9 +129,14 @@ class FCIO extends Bundle{
 
     val fcIcache = Input(new FcCacheIO)
     val fcDcache = Input(new FcCacheIO)
+    val fencei_req = Output(Bool())
+    val fencei_resp = Input(Bool())
+
     val fcio = Flipped(new IOfc)
 
     val sdb_stall = Output(Bool())
+
+    
 }
 import TrIO._
 
@@ -134,10 +150,27 @@ class FlowControl extends Module{
     val IO_stall = WireInit(0.B)
 
     val MULDIV_stall = WireInit(0.B)
+
+    val FENCEI_stall = WireInit(0.B)
     // dontTouch(Icache_stall)
     // dontTouch(Dcache_stall)
     dontTouch(IO_stall)
     dontTouch(MULDIV_stall)
+    dontTouch(FENCEI_stall)
+
+
+    val timer_int_record_for_Icache = RegInit(0.B)
+    when(io.fcIcache.state === 0.B && io.fctr.trap_state === 0.B){
+        timer_int_record_for_Icache := 0.B
+    }
+    .elsewhen(io.fcIcache.state =/= 0.U && io.fctr.trap_state =/= 0.U){
+        timer_int_record_for_Icache := 1.B
+    }
+
+    io.fcde.tirfi_flag := 0.B
+    when(timer_int_record_for_Icache === 1.B && io.fcIcache.state === 0.B && io.fctr.trap_state === 0.B){
+        io.fcde.tirfi_flag := 1.B
+    }
 
 
     // when(io.fcIcache.state =/= 0.U){  //为解决combination circuit做出妥协
@@ -190,24 +223,44 @@ class FlowControl extends Module{
         MULDIV_stall := 0.B
     }
 
+
+
+    io.fencei_req := 0.B
+    when(io.fencei_resp){
+        FENCEI_stall := 0.B
+    }
+    .elsewhen(io.fcde.fencei){
+        FENCEI_stall := 1.B
+        io.fencei_req := 1.B
+    }
+
+
+
     val SFBundle = MuxCase(FlowControl.default,
         Seq(
+            
             (io.fctr.trap_state === s_MSTATUS || io.fctr.trap_state  === s_MRET) -> FlowControl.TrapJump_SFBundle,
             (io.fctr.pop_NOP === 1.B || io.fctr.trap_state === s_WAIT || io.fctr.trap_state === s_MEPC
              || io.fctr.trap_state === s_MCAUSE || io.fctr.trap_state === s_MRET_WAIT || io.fctr.trap_state === s_CLRMIP)
                 -> FlowControl.TrapWait_SFBundle,
+            timer_int_record_for_Icache -> FlowControl.TIRFI_SFBundle,  //添加后,关于中断的执行流问题解决
             IO_stall -> FlowControl.IOAXI_SFBundle,
             MULDIV_stall -> FlowControl.MULDIV_SFBundle,
+            
+            
             (io.fcIcache.state =/= 0.U) -> FlowControl.Icache_SFBundle,
-            (io.fcDcache.state =/= 0.U) -> FlowControl.Dcache_SFBundle, //优先级高于load_use
+            (io.fcDcache.state =/= 0.U && io.fcDcache.state =/= 6.U && io.fcDcache.state =/= 7.U) -> FlowControl.Dcache_SFBundle, //优先级高于load_use
             (io.fcde.load_use === 1.B) -> FlowControl.LoadUse_SFBundle,
-            
             (io.fctr.jump_flag === 1.B) -> FlowControl.JUMP_SFBundle,
-            (io.fcex.jump_flag === 1.B) -> FlowControl.BRANCH_SFBundle,
             
+            (io.fcex.jump_flag === 1.B) -> FlowControl.BRANCH_SFBundle,
             (io.fcde.jump_flag === 1.B) -> FlowControl.JUMP_SFBundle,
+            (FENCEI_stall) -> FlowControl.FENCEI_SFBundle, //优先级换到这里,避免其在branch后仍然执行
+            
         )
     )
+
+
 
     
 

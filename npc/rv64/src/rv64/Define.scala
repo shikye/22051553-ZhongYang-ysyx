@@ -23,7 +23,7 @@ object Define {
     val MEPC_ADDR = 0x341
     val MIE_ADDR = 0x304
     val MIP_ADDR = 0x344
-    val MSTATUS_ADDR = 0x300
+    val MSTATUS_ADDR = 0x300 
     val MSCRATCH_ADDR = 0x340
     //CLINT
     val MSIP_ADDR = 0x02000000
@@ -112,7 +112,7 @@ object Define {
     def REMUW = BitPat("b0000001 ????? ????? 111 ????? 0111011")
     // Synch
     // def FENCE = BitPat("b0000????????00000000000000001111")
-    // def FENCEI = BitPat("b00000000000000000001000000001111")
+    def FENCEI = BitPat("b00000000000000000001000000001111")
     // CSR Access
     def CSRRW = BitPat("b???????????? ????? 001 ????? 1110011")
     def CSRRS = BitPat("b???????????? ????? 010 ????? 1110011")

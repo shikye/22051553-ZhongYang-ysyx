@@ -14,6 +14,7 @@ class FcTrIO extends Bundle{
 
     val jump_flag = Output(Bool())
     val jump_pc = Output(UInt(PC_LEN.W))
+
 }
 
 class TrIO extends Bundle{
@@ -34,6 +35,11 @@ class TrIO extends Bundle{
 
     //to fc
     val fctr = new FcTrIO
+
+
+    //from ex
+    val fcex_jump_flag = Input(Bool())
+    val fcex_jump_pc = Input(UInt(PC_LEN.W))
 
 }
 
@@ -94,10 +100,18 @@ class Trap extends Module{
                 state := s_WAIT
             }
 
+            when(io.fcex_jump_flag){
+                pc := io.fcex_jump_pc
+            }
+
         }
         is(s_WAIT){
             when(!io.ex_hasinst && !io.mem_hasinst && !io.wb_hasinst){ //等待前面有效指令执行完
                 state := s_MEPC
+            }
+
+            when(io.fcex_jump_flag){
+                pc := io.fcex_jump_pc
             }
         }
         is(s_MEPC){
